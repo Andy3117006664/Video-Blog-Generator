@@ -1,0 +1,92 @@
+# Dependencies
+node_modules/
+vendor/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+out/
+*.pyc
+__pycache__/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IDE - JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Logs & Large Files (Customized)
+*.log
+video_blog_generator.log
+*.mp4
+*.m4a
+cookies.txt
+transcript.txt
+output.html
+
+# Frames/Screenshots
+frames/
+
+# Operating System
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache/
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Package files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+    89|.eslintcache
+
+# Optional REPL history
+    92|.node_repl_history 
