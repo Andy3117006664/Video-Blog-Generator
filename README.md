@@ -2,6 +2,8 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+[中文说明](README.zh-CN.md)
+
 Have a long technical video but no time to watch it? This enhanced LLM application transforms long YouTube or Bilibili videos into structured, high-quality technical blogs with accurate timestamps and slide-based images.
 
 ## Core Features
