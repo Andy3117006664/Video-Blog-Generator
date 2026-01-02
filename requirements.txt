@@ -5,3 +5,6 @@ youtube-transcript-api>=0.6.0
 pyyaml>=6.0
 yt-dlp>=2023.7.6
 opencv-python
+easyocr
+torch
+torchvision
