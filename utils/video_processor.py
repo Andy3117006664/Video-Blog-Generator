@@ -7,6 +7,7 @@ import logging
 import glob
 import json
 import difflib
+import easyocr
 from datetime import timedelta
 from youtube_transcript_api import YouTubeTranscriptApi
 from utils.call_llm import call_llm
@@ -142,8 +143,8 @@ Return ONLY a valid JSON list of objects:
 VIDEO TITLE: {title}
 
 TRANSCRIPT:
-{transcript_text[:20000]} # Increased limit to see more of the video
-"""
+    {transcript_text}
+    """
     try:
         logger.info("Calling LLM to detect topic shifts...")
         response = call_llm(prompt)
@@ -155,7 +156,7 @@ TRANSCRIPT:
         logger.error(f"Error detecting topic shifts with LLM: {e}")
         return []
 
-def extract_frames(video_path, output_dir, sensitivity=0.15):
+def extract_frames(video_path, output_dir, sensitivity=0.05):
     """Extract frames from video based on visual difference (PPT slide changes)."""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -238,46 +239,48 @@ def get_video_id(url):
 
 def get_video_info(url):
     """Download video, extract transcript and frames using text-based outline."""
+    
+    def ts_to_sec(ts):
+        try:
+            if not ts or ts == "Unknown": return 0
+            parts = ts.split(':')
+            if len(parts) == 3: h, m, s = map(int, parts)
+            elif len(parts) == 2: h, m, s = 0, int(parts[0]), int(parts[1])
+            else: return 0
+            return h * 3600 + m * 60 + s
+        except: return 0
+
     video_id = get_video_id(url)
     if not video_id:
         return {"error": "Unsupported or invalid video URL"}
 
     ydl_opts = {
-        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
         'outtmpl': 'temp_video.%(ext)s',
         'skip_download': False,
         'quiet': False,
         'no_warnings': False,
         'cookiefile': 'cookies.txt',
         'merge_output_format': 'mp4',
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['zh-Hans', 'zh-CN', 'zh', 'en', 'all'],
+        'writesubtitles': False, # Download subtitles separately to avoid 429 killing video download
+        'writeautomaticsub': False,
+        'subtitleslangs': ['zh-Hans', 'en'],
         'retries': 10,
         'fragment_retries': 10,
         'nocheckcertificate': True,
         'socket_timeout': 30,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     
+    info = {}
+    video_path = None
     try:
         video_path = find_existing_video()
         if video_path:
             logger.info(f"Using existing video file: {video_path}")
-            
-            # 0. Check if subtitles exist, if not, re-fetch them without downloading video
-            base_path = os.path.splitext(video_path)[0]
-            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
-            
-            if not potential_subs:
-                logger.info("Video exists but subtitles missing. Fetching subtitles only...")
-                sub_ydl_opts = ydl_opts.copy()
-                sub_ydl_opts['skip_download'] = True
-                with yt_dlp.YoutubeDL(sub_ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True) # download=True with skip_download=True only gets subs
-            else:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
+            # Get info even if video exists
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
         else:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -287,14 +290,34 @@ def get_video_info(url):
                     if os.path.exists(base + ".mp4"):
                         video_path = base + ".mp4"
         
+        # Now try to get subtitles separately
+        if video_path:
+            base_path = os.path.splitext(video_path)[0]
+            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
+            if not potential_subs:
+                logger.info("Fetching subtitles...")
+                sub_opts = ydl_opts.copy()
+                sub_opts.update({'skip_download': True, 'writesubtitles': True, 'writeautomaticsub': True})
+                try:
+                    with yt_dlp.YoutubeDL(sub_opts) as ydl:
+                        ydl.download([url])
+                except Exception as sub_e:
+                    logger.warning(f"Subtitles download failed (likely 429): {sub_e}")
+    except Exception as e:
+        logger.warning(f"yt-dlp download/info extraction failed: {e}. Trying to proceed with whatever is available...")
+    
+    try:
         title = info.get('title', 'Video')
         description = info.get('description', '')
         
         # 1. Transcript extraction
         transcript_text = ""
         srt_path = ""
-        base_path = os.path.splitext(video_path)[0]
-        potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
+        if video_path:
+            base_path = os.path.splitext(video_path)[0]
+            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
+        else:
+            potential_subs = []
         
         if potential_subs:
             chosen_sub = None
@@ -340,6 +363,27 @@ def get_video_info(url):
             except Exception as e:
                 logger.error(f"Error reading sub: {e}")
 
+        # Fallback to YouTubeTranscriptApi if yt-dlp failed
+        if not transcript_text and ("youtube.com" in url or "youtu.be" in url):
+            logger.info("yt-dlp failed to get subtitles. Trying YouTubeTranscriptApi...")
+            try:
+                # Use YouTubeTranscriptApi class directly if possible, or handle instance
+                try:
+                    ts_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['zh-Hans', 'zh-CN', 'zh', 'en'])
+                except AttributeError:
+                    # Some versions might require instantiation or have different naming
+                    ts_list = YouTubeTranscriptApi().get_transcript(video_id, languages=['zh-Hans', 'zh-CN', 'zh', 'en'])
+                
+                blocks = []
+                for entry in ts_list:
+                    start = int(entry['start'])
+                    ts_str = str(timedelta(seconds=start)).split('.')[0].zfill(8)
+                    blocks.append(f"[{ts_str}] {entry['text']}")
+                transcript_text = "\n".join(blocks)
+                logger.info("Successfully retrieved transcript via YouTubeTranscriptApi.")
+            except Exception as e:
+                logger.warning(f"YouTubeTranscriptApi also failed: {e}")
+
         # Fallback to description if no transcript
         if not transcript_text:
             description = info.get('description', '')
@@ -347,40 +391,44 @@ def get_video_info(url):
 
         # 2. Outline / Topic Shift detection
         outline = parse_outline_from_description(description)
-        if not outline:
-            logger.info("No outline in description, detecting via LLM...")
-            shifts = detect_topic_shifts_with_llm(transcript_text, title)
-            if shifts:
-                srt_items = parse_srt(srt_path) if srt_path else []
-                for s in shifts:
-                    precise_sec = get_precise_timestamp(s['anchor_quote'], srt_items)
-                    if precise_sec is not None:
-                        s['timestamp'] = str(timedelta(seconds=precise_sec)).zfill(8)
-                    else:
-                        # Use the LLM's estimated timestamp as fallback if anchor quote fails
-                        s['timestamp'] = s.get('approx_timestamp', "Unknown")
-                outline = shifts
+        
+        logger.info("Detecting additional topic shifts via LLM to refine outline...")
+        llm_shifts = detect_topic_shifts_with_llm(transcript_text, title)
+        if llm_shifts:
+            srt_items = parse_srt(srt_path) if srt_path else []
+            for s in llm_shifts:
+                precise_sec = get_precise_timestamp(s['anchor_quote'], srt_items)
+                if precise_sec is not None:
+                    s['timestamp'] = str(timedelta(seconds=precise_sec)).zfill(8)
+                else:
+                    # Use the LLM's estimated timestamp as fallback if anchor quote fails
+                    s['timestamp'] = s.get('approx_timestamp', "Unknown")
+            
+            if not outline:
+                outline = llm_shifts
+            else:
+                # Merge: Supplement description outline with LLM-detected technical shifts
+                existing_secs = [ts_to_sec(o['timestamp']) for o in outline if o.get('timestamp') != "Unknown"]
+                for s in llm_shifts:
+                    s_sec = ts_to_sec(s['timestamp'])
+                    # If this LLM shift is not too close to any existing description item (3 mins), add it
+                    if not any(abs(s_sec - es) < 180 for es in existing_secs):
+                        outline.append(s)
+                outline = sorted(outline, key=lambda x: ts_to_sec(x['timestamp']))
 
         # 2.1 Multimodal enhancement: Supplement with visual topic shifts (PPT changes)
         # If the visual change occurs far from any existing outline item, we title it and add it.
-        frames = extract_frames(video_path, "frames")
+        frames = extract_frames(video_path, "frames") if video_path else []
         if frames and outline:
             logger.info("Merging visual topic shifts into the outline...")
             
-            # Helper to convert HH:MM:SS to seconds
-            def ts_to_sec(ts):
-                try:
-                    h, m, s = map(int, ts.split(':'))
-                    return h * 3600 + m * 60 + s
-                except: return 0
-
             existing_secs = [ts_to_sec(o['timestamp']) for o in outline if o.get('timestamp') != "Unknown"]
             
             candidates = []
             for f in frames:
                 f_sec = ts_to_sec(f['timestamp'])
-                # If this visual frame is more than 2 minutes away from any outline point, it might be a missed topic (like panel)
-                if not any(abs(f_sec - es) < 120 for es in existing_secs):
+                # If this visual frame is more than 1 minute away from any outline point, it might be a missed topic (like panel)
+                if not any(abs(f_sec - es) < 60 for es in existing_secs):
                     # Extract a snippet around this frame to help LLM title it
                     # Get surrounding transcript from the raw segments (approximate)
                     snippet = ""
@@ -395,74 +443,206 @@ def get_video_info(url):
             
             if candidates:
                 logger.info(f"Titling {len(candidates)} visual topic shifts in batch...")
-                # Batch ask LLM to title each boundary using nearby transcript snippet
-                # Limit to first 20 candidates to avoid context window issues
-                batch = candidates[:20]
-                prompt = "You are given a list of timestamps where the video visual changed (likely a new PPT slide or topic title).\n"
-                prompt += "For each item, generate a concise section title in the SAME LANGUAGE as the snippet.\n"
-                prompt += "Return ONLY a valid JSON list of objects: [{\"timestamp\": \"HH:MM:SS\", \"title\": \"...\"}, ...]\n\n"
-                prompt += json.dumps(batch, ensure_ascii=False)
                 
-                try:
-                    resp = call_llm(prompt)
-                    # Clean response from potential markdown backticks
-                    resp = re.sub(r"```json\s*|\s*```", "", resp).strip()
-                    new_visual_items = json.loads(resp)
-                    if new_visual_items:
-                        outline.extend(new_visual_items)
-                        outline = sorted(outline, key=lambda x: ts_to_sec(x['timestamp']))
-                except Exception as e:
-                    logger.error(f"Failed to title visual boundaries in batch: {e}")
+                # Sort candidates by time to ensure sampling is chronological
+                candidates = sorted(candidates, key=lambda x: ts_to_sec(x['timestamp']))
+                
+                # Pick candidates covering the whole timeline (head, tail, and middle)
+                def pick_diverse(items, k):
+                    n = len(items)
+                    if n <= k: return items
+                    # Include head, tail, and evenly spaced middle items
+                    head_count = max(1, k // 4)
+                    tail_count = max(1, k // 4)
+                    mid_count = k - head_count - tail_count
+                    
+                    picked_indices = set()
+                    # Head
+                    for i in range(head_count): picked_indices.add(i)
+                    # Tail
+                    for i in range(n - tail_count, n): picked_indices.add(i)
+                    # Middle
+                    if mid_count > 0:
+                        step = (n - head_count - tail_count) / (mid_count + 1)
+                        for i in range(1, mid_count + 1):
+                            idx = int(head_count + i * step)
+                            if idx < n: picked_indices.add(idx)
+                    
+                    return [items[i] for i in sorted(list(picked_indices))]
 
-        # 3. Final construction for LLM
+                # Use a larger total limit (e.g., 40) but process in smaller chunks
+                diverse_candidates = pick_diverse(candidates, 40)
+                
+                all_new_visual_items = []
+                chunk_size = 10
+                for i in range(0, len(diverse_candidates), chunk_size):
+                    chunk = diverse_candidates[i:i + chunk_size]
+                    logger.info(f"Processing visual titles chunk {i//chunk_size + 1}...")
+                    
+                    prompt = "You are given a list of timestamps where the video visual changed (likely a new PPT slide or topic title).\n"
+                    prompt += "For each item, generate a concise section title in the SAME LANGUAGE as the snippet.\n"
+                    prompt += "Return ONLY a valid JSON list of objects: [{\"timestamp\": \"HH:MM:SS\", \"title\": \"...\"}, ...]\n\n"
+                    prompt += json.dumps(chunk, ensure_ascii=False)
+                    
+                    try:
+                        resp = call_llm(prompt)
+                        resp_clean = re.sub(r"```json\s*|\s*```", "", resp).strip()
+                        new_items = json.loads(resp_clean)
+                        if isinstance(new_items, list):
+                            all_new_visual_items.extend(new_items)
+                    except Exception as e:
+                        logger.error(f"Failed to title visual boundaries chunk: {e}")
+
+                if all_new_visual_items:
+                    outline.extend(all_new_visual_items)
+                    outline = sorted(outline, key=lambda x: ts_to_sec(x['timestamp']))
+
+            # 2.2 OCR Enhancement for Panel Discussion (Directly using frames folder for tail topics)
+            logger.info("Checking for panel discussion topics via OCR using frames folder...")
+            
+            # Use fixed start time for panel OCR as requested: 01:30:50
+            PANEL_OCR_START = "01_30_50"
+            
+            def _is_time_jpg(name):
+                return bool(re.match(r"^\d{2}_\d{2}_\d{2}\.jpg$", name))
+
+            def _fname_to_ts(name):
+                return name[:-4].replace("_", ":")
+
+            try:
+                # List all frames in the folder
+                all_frame_files = [n for n in os.listdir("frames") if _is_time_jpg(n)]
+                all_frame_files.sort()
+                
+                # Filter frames from 01_30_50 onwards
+                target_frames = [n for n in all_frame_files if n >= f"{PANEL_OCR_START.replace(':', '_')}.jpg"]
+                
+                if target_frames:
+                    logger.info(f"Performing OCR on {len(target_frames)} frames from {PANEL_OCR_START} onwards...")
+                    reader = easyocr.Reader(['ch_sim','en'])
+                    topics = {} # num -> (text, timestamp)
+                    
+                    # Patterns: 话题1: Title, 1. Title, Topic 1: Title
+                    pat_topic = re.compile(r'(?:话题|Topic)\s*([0-9]{1,2})\s*[:：\.、]\s*(.+)', re.IGNORECASE)
+                    pat_num = re.compile(r'^\s*([0-9]{1,2})\s*[\.\、:：]\s*(.+)\s*$')
+                    
+                    for fname in target_frames:
+                        img_path = os.path.join("frames", fname)
+                        ts = _fname_to_ts(fname)
+                        
+                        results = reader.readtext(img_path, detail=0)
+                        text_joined = " ".join(results)
+                        
+                        # Optimization: only look for topics if specific keywords or number patterns are found
+                        if not any(k in text_joined for k in ["话题", "Topic"]) and not re.search(r"\b\d+[\.\、:：]\b", text_joined):
+                            continue
+                            
+                        for line in results:
+                            line = line.strip()
+                            m = pat_topic.search(line) or pat_num.match(line)
+                            if m:
+                                num = int(m.group(1))
+                                title_text = m.group(2).strip()
+                                if len(title_text) > 3:
+                                    # Keep the longest title for a given number
+                                    if num not in topics or len(title_text) > len(topics[num][0]):
+                                        topics[num] = (title_text, ts)
+                        
+                        # If we've found enough topics (e.g. 6), we can stop
+                        if len(topics) >= 6: break
+                    
+                    if topics:
+                        logger.info(f"OCR extracted {len(topics)} topics from frames folder.")
+                        for num in sorted(topics.keys()):
+                            t_text, t_ts = topics[num]
+                            # Fuzzy check duplicate
+                            if not any(difflib.SequenceMatcher(None, t_text, o.get('title', '')).ratio() > 0.7 for o in outline):
+                                outline.append({"timestamp": t_ts, "title": f"圆桌话题 {num}: {t_text}"})
+                        
+                        outline = sorted(outline, key=lambda x: ts_to_sec(x['timestamp']))
+                    else:
+                        logger.info("No panel topics extracted via OCR from frames folder.")
+            except Exception as e:
+                logger.error(f"OCR panel enhancement failed: {e}")
+
+        # 3. Final construction for LLM: Guided Segments
+        # This binds each outline item to its corresponding transcript text and image.
         
+        logger.info("Constructing guided segments for LLM...")
+        srt_items = parse_srt(srt_path) if srt_path else []
+        enhanced_segments = []
+        
+        for i, item in enumerate(outline):
+            start_sec = ts_to_sec(item.get('timestamp'))
+            # End of this segment is the start of the next outline item
+            end_sec = ts_to_sec(outline[i+1]['timestamp']) if i+1 < len(outline) else 999999
+            
+            # 1. Retrieve detailed transcript for this segment
+            # We use the raw SRT items to get the most detailed text possible.
+            segment_text = " ".join([txt for sec, txt in srt_items if start_sec <= sec < end_sec])
+            
+            # 2. Match the most relevant image frame
+            # We look for a frame within a short window around the start timestamp.
+            best_frame = None
+            for f in frames:
+                f_sec = ts_to_sec(f['timestamp'])
+                # Prefer frame closest to start_sec, but allow some drift (e.g. 30s)
+                if abs(f_sec - start_sec) < 30:
+                    best_frame = f['path']
+                    break
+            
+            enhanced_segments.append({
+                "timestamp": item.get('timestamp', 'Unknown'),
+                "title": item.get('title', 'New Section'),
+                "image": best_frame,
+                "content": segment_text.strip()
+            })
+
+        # Build the final prompt input: Guided structure
         transcript_with_name = f"VIDEO TITLE: {title}\n\n"
         transcript_with_name += f"VIDEO DESCRIPTION:\n{description}\n\n"
         
-        if outline:
-            transcript_with_name += "STRUCTURED OUTLINE:\n"
-            for item in outline:
-                ts = item.get('timestamp', 'N/A')
-                transcript_with_name += f"- [{ts}] {item.get('title', 'New Section')}\n"
-            transcript_with_name += "\n"
-
-        transcript_with_name += "AVAILABLE SCREENSHOTS:\n"
-        for f in frames:
-            transcript_with_name += f"Timestamp: {f['timestamp']}, Image Path: {f['path']}\n"
+        transcript_with_name += "GUIDED BLOG STRUCTURE (STRICTLY FOLLOW THIS HIERARCHY):\n"
+        transcript_with_name += "Each section below contains a title, a timestamp, a key image, and the EXACT reference text to summarize.\n\n"
         
-        transcript_with_name += "\nFULL TRANSCRIPT (10-minute blocks):\n"
+        for seg in enhanced_segments:
+            transcript_with_name += f"--- SECTION START ---\n"
+            transcript_with_name += f"TIMESTAMP: [{seg['timestamp']}]\n"
+            transcript_with_name += f"SECTION TITLE: {seg['title']}\n"
+            if seg['image']:
+                transcript_with_name += f"KEY IMAGE: <img src=\"{seg['image']}\" caption=\"{seg['title']}\">\n"
+            transcript_with_name += f"REFERENCE TRANSCRIPT FOR THIS SECTION:\n{seg['content'] if seg['content'] else '(No transcript available for this segment)'}\n"
+            transcript_with_name += f"--- SECTION END ---\n\n"
+
+        # Also provide the raw transcript for context at the bottom
+        transcript_with_name += "\n" + "="*50 + "\n"
+        transcript_with_name += "FULL TRANSCRIPT (FOR OVERALL CONTEXT ONLY):\n"
         transcript_with_name += transcript_text
         
+        # Save the new detailed structure to transcript.txt for inspection
         with open("transcript.txt", "w", encoding="utf-8") as f:
-            content = f"VIDEO TITLE: {title}\n"
-            content += f"VIDEO DESCRIPTION:\n{description}\n\n"
-            if outline:
-                content += "STRUCTURED OUTLINE:\n"
-                for item in outline:
-                    ts = item.get('timestamp', 'N/A')
-                    content += f"- [{ts}] {item.get('title', 'New Section')}\n"
-                content += "\n"
-            content += "="*50 + "\n\nFULL TRANSCRIPT:\n" + transcript_text
-            f.write(content)
+            f.write(transcript_with_name)
 
         # Cleanup local subtitle files (Keep the video AND SRT!)
-        base_path = os.path.splitext(video_path)[0]
-        potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt', '.xml'))]
-        for ps in potential_subs:
-            try:
-                # Keep SRT and VTT for future runs and analysis
-                if ps.endswith(('.srt', '.vtt')):
-                    continue
-                os.remove(ps)
-            except:
-                pass
+        if video_path:
+            base_path = os.path.splitext(video_path)[0]
+            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt', '.xml'))]
+            for ps in potential_subs:
+                try:
+                    # Keep SRT and VTT for future runs and analysis
+                    if ps.endswith(('.srt', '.vtt')):
+                        continue
+                    os.remove(ps)
+                except:
+                    pass
             
         return {
             "title": title,
             "transcript_with_name": transcript_with_name,
             "frames": frames,
             "url": url,
-            "outline": outline
+            "outline": outline,
+            "enhanced_segments": enhanced_segments
         }
     except Exception as e:
         logger.error(f"Error processing video: {e}")

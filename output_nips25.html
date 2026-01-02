@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeurIPS 2025 预讲会 | 生成式推荐专场：大模型如何重塑推荐系统？</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, "Microsoft YaHei", sans-serif;
+            line-height: 1.8;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        header {
+            border-bottom: 3px solid #2c3e50;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            font-size: 2.2em;
+            text-align: center;
+        }
+        h2 {
+            color: #2980b9;
+            border-left: 5px solid #2980b9;
+            padding-left: 15px;
+            margin-top: 50px;
+            font-size: 1.6em;
+        }
+        h3 {
+            color: #16a085;
+            margin-top: 30px;
+            font-size: 1.3em;
+        }
+        p {
+            margin-bottom: 20px;
+            text-align: justify;
+        }
+        .timestamp {
+            color: #7f8c8d;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 20px auto;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .caption {
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+            margin-top: -10px;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        ul {
+            margin-bottom: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        .highlight {
+            background-color: #fcf8e3;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            color: #bdc3c7;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>NeurIPS 2025 预讲会 | 生成式推荐专场：大模型如何重塑推荐系统？</h1>
+    <p><strong>研讨会主题：</strong> 深度探讨大语言模型（LLM）与推荐系统的交叉研究，涵盖推理增强、信息增益建模、列表对齐及自主决策等前沿技术。</p>
+</header>
+
+<section>
+    <h2>Introduction: Frameworks and Training for Generative Recommendation</h2>
+    <p><span class="timestamp">[00:00:33]</span> 在本次专题报告的开场中，主持人李永琪老师为我们梳理了生成式推荐系统的两个核心关注点。首先是<strong>预测机制</strong>。目前的生成式推荐主要分为两种路径：一种是传统的“Matching”模式，通过计算用户历史与Item信息的Embedding匹配分进行排序；另一种是纯粹的“Generative”模式，模型直接为每个Item赋予唯一的Identifier（如Title或Semantic ID），并通过自回归生成这些ID来完成推荐。在纯生成式范式下，如何构建排名列表（Rank List）以及生成的步数（一次生成或多次生成）是研究的关键。</p>
+    <p>其次是<strong>训练框架</strong>。研究者应当关注生成式推荐模型在训练方法上与传统判别式Loss的区别。现有的工作是否采用了Next Token Prediction、强化学习（RL）或其他新颖的训练范式。这两个维度的梳理对于理解后续报告中各类大模型如何运作具有指导意义。</p>
+</section>
+
+<section>
+    <h2>开场致辞与生成式推荐模型背景</h2>
+    <img src="frames/00_03_25.jpg" alt="开场致辞与生成式推荐模型背景">
+    <div class="caption">开场致辞与生成式推荐模型背景</div>
+    <p><span class="timestamp">[00:03:25]</span> 首位讲者是来自香港理工大学的Runyang You。他带来的工作标题是 <strong>"R²ec: Reasoning Towards Large Recommender Models with Reasoning"</strong>。该项研究的灵感源自2025年初DeepSeek-R1等模型带起的趋势，即通过增加推理步数（Test-time Scaling）来显著提升模型的推理性能。Runyang提出：这种通过“多思考”带来的收益，是否也能在推荐模型中实现？</p>
+</section>
+
+<section>
+    <h2>推荐任务中的推理：Think to Recommend</h2>
+    <img src="frames/00_4_10.jpg" alt="推荐任务中的推理：Think to Recommend">
+    <div class="caption">推荐任务中的推理：Think to Recommend</div>
+    <p><span class="timestamp">[00:04:25]</span> 尽管“推理”在推荐系统中并非新概念，但以往的方法通常将大型语言模型（LLM）作为外部辅助模块（External Accelery Module），负责分析用户序列产生文字特征，再送入独立的推荐模型。Runyang指出，这种Pipeline式设计存在三大痛点：
+    <ul>
+        <li><strong>训练不同步</strong>：无法同时针对推理和推荐目标联合优化两个模型。</li>
+        <li><strong>硬件压力大</strong>：同时维护两个模型会带来巨大的显存开销和推理延迟，难以满足实时性需求。</li>
+        <li><strong>数据匮乏</strong>：推荐场景虽有海量交互数据，但缺乏优质的、体现推理过程（Reasoning Trace）的标注数据。</li>
+    </ul>
+    </p>
+</section>
+
+<section>
+    <h2>Reasoning React: Scaling Reasoning Capabilities in Large Recommender Models</h2>
+    <p><span class="timestamp">[00:05:40]</span> 为解决上述问题，研究团队提出了一个统一的大语言模型框架。该框架将推理与推荐功能融为一体（Unified LLM），支持联合训练。此外，由于缺乏推理标注，研究者引入了一套强化学习（RL）方案，使模型能够在没有现成 Reason Trace 的情况下，通过自我生成的轨迹进行优化，从而在推理过程中实现自适应的策略调整。</p>
+</section>
+
+<section>
+    <h2>统一大模型架构与线性预测层设计</h2>
+    <img src="frames/00_07_05.jpg" alt="统一大模型架构与线性预测层设计">
+    <div class="caption">统一大模型架构与线性预测层设计</div>
+    <p><span class="timestamp">[00:07:05]</span> 在架构设计上，研究采用主流的LLM作为Backbone，并增加了一个名为“Recommendation Head”的线性层。该层负责将模型生成的Hidden States转换为Item的表征。在推理阶段，模型首先以文本形式接收用户的历史交互信息（Prompting），随后模型像处理文本任务一样生成内部推理分析（如用户的兴趣特征提取），最后通过推荐头找到得分最高的物品。</p>
+</section>
+
+<section>
+    <h2>模型推理流程与强化学习训练框架</h2>
+    <img src="frames/00_08_40.jpg" alt="模型推理流程与强化学习训练框架">
+    <div class="caption">模型推理流程与强化学习训练框架</div>
+    <p><span class="timestamp">[00:08:40]</span> 针对缺乏推理标注的问题，研究引入了轨迹采样（Trajectory Sampling）加强化学习的优化机制。具体步骤如下：
+    <ol>
+        <li><strong>采样（Sampling）</strong>：针对同一输入，模型利用Temperature和Top-k采样生成多条不同的推理轨迹。</li>
+        <li><strong>奖励（Reward）</strong>：定义一套规则，对推理质量较高的轨迹给予高分。</li>
+        <li><strong>联合优化（Joint RL）</strong>：将推理Token序列与最终推荐行为视为一条完整的Trace，计算优势函数（Advantage）进行训练。这种方法可以无缝集成到PPO等现有的RL算法框架中。</li>
+    </ol>
+    </p>
+</section>
+
+<section>
+    <h2>轨迹采样与强化学习奖励函数设计</h2>
+    <img src="frames/00_10_10.jpg" alt="轨迹采样与强化学习奖励函数设计">
+    <div class="caption">轨迹采样与强化学习奖励函数设计</div>
+    <p><span class="timestamp">[00:10:10]</span> 奖励函数的设计是系统的核心。研究结合了<strong>离散奖励（Discrete Reward）</strong>和<strong>连续奖励（Continuous Reward）</strong>。
+    <ul>
+        <li><strong>离散奖励</strong>：基于传统的排序指标（如NDCG），根据物品在候选池中的排名给予反馈。</li>
+        <li><strong>连续奖励</strong>：由于单纯的排名反馈可能在采样时出现“奖励稀疏”或相同的情况，研究引入了Softmax Similarity Reward，计算推荐项与用户的语义相似度。虽然其比例设定较小，但能为细微的轨迹差异提供优化信号。</li>
+    </ul>
+    </p>
+</section>
+
+<section>
+    <h2>结合离散与连续奖励的优化目标</h2>
+    <img src="frames/00_11_25.jpg" alt="结合离散与连续奖励的优化目标">
+    <div class="caption">结合离散与连续奖励的优化目标</div>
+    <p><span class="timestamp">[00:11:25]</span> 最终的训练目标是将推荐行为置于推理Token序列之后，形成统一的行为序列。在RL损失函数中，推荐行为的概率通过<strong>In-batch Negative Sampling</strong>计算。这种方式要求将Item的语义信息也输入LLM以获取Item Embedding。实验中还发现，仅让奖励最高的轨迹更新推理策略，而其余轨迹更新Token Policy，能取得最优的训练效果。</p>
+</section>
+
+<section>
+    <h2>训练优化细节与基准模型对比</h2>
+    <img src="frames/00_14_20.jpg" alt="训练优化细节与基准模型对比">
+    <div class="caption">训练优化细节与基准模型对比</div>
+    <p><span class="timestamp">[00:14:20]</span> 实验涵盖了多个基于LLM的强大Baseline，如LARA、BigRAG以及带有推理模块的LM-Tune。结果显示，引入推理机制的模型显示出了更强的推荐性能。此外，研究还对比了传统的SASRec等模型，R²ec在多个测评指标上均展现出明显优势，证明了通过RL优化推理过程的有效性。</p>
+</section>
+
+<section>
+    <h2>推理及其有效性的消融实验</h2>
+    <img src="frames/00_15_20.jpg" alt="推理及其有效性的消融实验">
+    <div class="caption">推理及其有效性的消融实验</div>
+    <p><span class="timestamp">[00:15:20]</span> 消融实验揭示了R²ec成功的关键点：
+    <ul>
+        <li><strong>有无推理对比</strong>：去除推理环节后，模型性能下降了15%-20%，直接证明了推理对精准推荐的贡献。</li>
+        <li><strong>训练策略对比</strong>：证明了通过对比学习（Contrastive Learning）机制获取语义信息优于简单的线性分类层。</li>
+        <li><strong>奖励组件对比</strong>：即使不使用连续奖励，模型表现依然优秀，但连续奖励能为完全相同的排名情况提供区分信号。</li>
+    </ul>
+    </p>
+</section>
+
+<section>
+    <h2>超参数分析：采样随机性与性能平衡</h2>
+    <img src="frames/00_16_50.jpg" alt="超参数分析：采样随机性与性能平衡">
+    <div class="caption">超参数分析：采样随机性与性能平衡</div>
+    <p><span class="timestamp">[00:16:50]</span> 研究对采样的Temperature和Top-k进行了深入分析。发现适当放大随机性（较高的Temperature）通常有助于模型学习。此外，随着采样组数（Group Size）的增加，像Qwen这样的模型能从多路径对比中获得更明显的收益。值得注意的是，实验还观察到了类似DeepSeek的“推理长度自发增长”现象。</p>
+</section>
+
+<section>
+    <h2>不同基座模型对比与推理行为分析</h2>
+    <img src="frames/00_18_25.jpg" alt="不同基座模型对比与推理行为分析">
+    <div class="caption">不同基座模型对比与推理行为分析</div>
+    <p><span class="timestamp">[00:18:25]</span> 为了深入研究可解释性，团队归纳了模型在推理过程中展现的行为模式，包括：属性抽象（Attribute Abstraction）、负向排除（Negative Exclusion）、自我解释（Self-Explanation）、模式识别（Pattern Recognition）、基于场景的推理（Scenario-based Reasoning）以及对时间维度的权衡（Temporal Reasoning）。这些行为在不同数据集上的分布差异，反映了模型具有自组织决策过程（Self-organizing Decision Making）的能力。</p>
+</section>
+
+<section>
+    <h2>自适应推理策略与可解释性研究</h2>
+    <img src="frames/00_20_45.jpg" alt="自适应推理策略与可解释性研究">
+    <div class="caption">自适应推理策略与可解释性研究</div>
+    <p><span class="timestamp">[00:20:45]</span> R²ec的另一大优势在于效率。其通过设定Identifier长度为1，避免了生成过长序列带来的延迟。相比传统长序列生成架构（如D3），R²ec的延迟（Latency）从4.62降至1.67，大幅缩减了近一半。虽然与SASRec这类极速模型仍有差距，但在大型推荐系统范式下已达到更优的平衡点。</p>
+</section>
+
+<section>
+    <h2>总结、结论与互动环节</h2>
+    <img src="frames/00_23_05.jpg" alt="总结、结论与互动环节">
+    <div class="caption">总结、结论与互动环节</div>
+    <p><span class="timestamp">[00:23:20]</span> 总结R²ec的工作：提出了包含内在推理能力的统一推荐模型架构，设计了一套无需人工标注的强化学习方案（Recommendation Policy Optimization），在提升指标的同时，实现了推荐过程的可解释性与跨域自适应能力。Runyang指出，推理与推荐可以完美集成在单一模型中，兼顾性能与效率。</p>
+</section>
+
+<section>
+    <h2>Token Decisiveness: Addressing Bias through Information Gain</h2>
+    <img src="frames/00_24_50.jpg" alt="Token Decisiveness: Addressing Bias through Information Gain">
+    <div class="caption">Token Decisiveness: Addressing Bias through Information Gain</div>
+    <p><span class="timestamp">[00:24:26]</span> 第二场报告者是来自新加坡国立大学的硕士生林子杰。他的工作 <strong>"Token Decisiveness Modeling via Information Gain"</strong> 探讨了生成式推荐在大模型解码过程中的缺陷。由于生成式推荐通常将Item ID表示为Token序列，这种范式面临着分布不一致的问题。</p>
+</section>
+
+<section>
+    <h2>生成式推荐中的Token级别偏差问题</h2>
+    <img src="frames/00_28_10.jpg" alt="生成式推荐中的Token级别偏差问题">
+    <div class="caption">生成式推荐中的Token级别偏差问题</div>
+    <p><span class="timestamp">[00:28:10]</span> 林子杰指出，逐个Token的最大似然优化与最终推荐目标并不一致。例如，Item A的总概率高于Item B，但在Beam Search解码过程中，如果Item B的首个Token概率极大，模型往往会陷入错误分叉。这种现象往往表现为：不同Item具有相同的前缀（如"The"），或者某些Token具有极高的Logits，主导了整个生成路径，导致Top-k结果高度趋同。</p>
+</section>
+
+<section>
+    <h2>解码过程中的Token分布不一致性分析</h2>
+    <img src="frames/00_29_40.jpg" alt="解码过程中的Token分布不一致性分析">
+    <div class="caption">解码过程中的Token分布不一致性分析</div>
+    <p><span class="timestamp">[00:29:40]</span> 团队提出了一个直觉性的考量：Token序列中，每个Token对最终识别Item的贡献是否一样？实际上，定冠词“the”的贡献远低于核心词“Mario”。如果大模型在训练期间对低信息量Token过拟合，就会出现解码偏差（Decoding Bias）。为了量化各个Token的重要性，研究引入了“决策度”（Decisiveness）概念。</p>
+</section>
+
+<section>
+    <h2>Token重要性评估与决策建模</h2>
+    <img src="frames/00_32_50.jpg" alt="Token重要性评估与决策建模">
+    <div class="caption">Token重要性评估与决策建模</div>
+    <p><span class="timestamp">[00:32:50]</span> 受信息论启发，研究采用<strong>信息增益（Information Gain, IG）</strong>来建模每个Token的决策度。当解码从“Super”进行到“Mario”时，备选Item集合的不确定性显著降低，这一降低量即为IG值。具有高IG值的Token是区分Item的关键，而Zero-IG Token则往往仅仅是起到辅助表征作用。统计显示，真实数据集中约55.96%至72.97%的Token其实是Zero-IG Token。</p>
+</section>
+
+<section>
+    <h2>基于信息增益的Token决策度统计分析</h2>
+    <img src="frames/00_36_10.jpg" alt="基于信息增益的Token决策度统计分析">
+    <div class="caption">基于信息增益的Token决策度统计分析</div>
+    <p><span class="timestamp">[00:36:10]</span> 分析发现，模型对Zero-IG Token的学习速度远快于Non-zero IG Token，容易导致过拟合（Tuning Bias）。在解码阶段，大模型也倾向于给低IG Token分配过高的Logit。此外，大模型生成Token时熵的下降速度慢于真实分布，这进一步诱导了偏差。因此，研究确定了两大核心任务：缓解Tuning Bias和修正Decoding Bias。</p>
+</section>
+
+<section>
+    <h2>偏差识别与方法设计原则</h2>
+    <img src="frames/00_39_20.jpg" alt="偏差识别与方法设计原则">
+    <div class="caption">偏差识别与方法设计原则</div>
+    <p><span class="timestamp">[00:39:20]</span> 解决偏差的策略遵循简单性原则：减少超参数、易于集成。基于此，团队提出了<strong>IJD（Information Gain Based Decisiveness）</strong>方法，涵盖训练阶段（IJD-Tuning）与生成阶段（IJD-Decoding）。</p>
+</section>
+
+<section>
+    <h2>IJD：基于信息增益的Token处理方案</h2>
+    <img src="frames/00_40_55.jpg" alt="IJD：基于信息增益的Token处理方案">
+    <div class="caption">IJD：基于信息增益的Token处理方案</div>
+    <p><span class="timestamp">[00:40:55]</span> 
+    <ul>
+        <li><strong>IJD-Tuning</strong>：在SFT阶段引入重加权机制，针对Zero-IG Token设定小于1的权重，从而迫使模型更关注高信息量Token的学习。</li>
+        <li><strong>IJD-Decoding</strong>：在Beam Search过程中，对高IG的Token提升Logit，对低IG的Token进行削弱，从而打破前缀偏差，让推荐结果更多元。</li>
+    </ul>
+    实验显示，二分类加权（Binary Weighting）的效果甚至优于复杂的线性权重设计。
+    </p>
+</section>
+
+<section>
+    <h2>解码策略优化与主流实验结果</h2>
+    <img src="frames/00_44_05.jpg" alt="解码策略优化与主流实验结果">
+    <div class="caption">解码策略优化与主流实验结果</div>
+    <p><span class="timestamp">[00:44:05]</span> IJD方法在NDCG和HR指标上均取得了稳定且显著的提升。它作为一个“即插即用”的模块，对不同Backbone大模型均有增益。未来的研究方向包括探索更精细的信息增益指标（如基尼系数、IG Ratio）以及在多模态Token序列下的决策度表征。</p>
+</section>
+
+<section>
+    <h2>Stepwise-GRPO: Fine-Grained Alignment for Drug Recommendation</h2>
+    <img src="frames/00_45_30.jpg" alt="Stepwise-GRPO: Fine-Grained Alignment for Drug Recommendation">
+    <div class="caption">Stepwise-GRPO: Fine-Grained Alignment for Drug Recommendation</div>
+    <p><span class="timestamp">[00:45:45]</span> 第三项分享是来自中国科学技术大学的范陈晓。她的研究聚焦于<strong>“生成式药物推荐”</strong>，这是一项关乎医疗安全的重要任务。现有的基于判别式或LLM的方法通常是“Pointwise”的（逐个药物判定），但药物推荐本质上是一个“List-wise”的决策过程。</p>
+</section>
+
+<section>
+    <h2>生成式药物推荐背景与动机介绍</h2>
+    <img src="frames/00_48_50.jpg" alt="生成式药物推荐背景与动机介绍">
+    <div class="caption">生成式药物推荐背景与动机介绍</div>
+    <p><span class="timestamp">[00:48:50]</span> 药物推荐需要根据患者的健康数据（诊断、手术、人口学信息）输出安全且有效的药物集合。现有的Pointwise范式忽略了药物之间的协同作用与安全性制衡。此外，LLM虽然具有丰富的文本理解能力，但在建模患者特定的协同信号和引入外部医疗知识方面依然存在挑战。</p>
+</section>
+
+<section>
+    <h2>现有药物推荐范式的不足与挑战</h2>
+    <img src="frames/00_50_00.jpg" alt="现有药物推荐范式的不足与挑战">
+    <div class="caption">现有药物推荐范式的不足与挑战</div>
+    <p><span class="timestamp">[00:50:00]</span> 算法层面上，目前的强化学习框架（如GRPO）通常基于“结果奖励”（Outcome-based Reward），即给整条回答一个整体评分。范陈晓指出，这种粗粒度的反馈忽视了单次回复中不同药物品质的差异。因此，需要设计一种能在Token或Step级别提供细粒度信号的RL对齐算法。</p>
+</section>
+
+<section>
+    <h2>List-wise 药物推荐框架与 Step-level 奖励设计</h2>
+    <img src="frames/00_52_15.jpg" alt="List-wise 药物推荐框架与 Step-level 奖励设计">
+    <div class="caption">List-wise 药物推荐框架与 Step-level 奖励设计</div>
+    <p><span class="timestamp">[00:52:15]</span> 该项工作总结为两大创新：一是在任务层面通过两阶段架构（初筛+精调）实现List-wise决策，并利用多元知识融合（混合表征策略）建模患者信息；二是在算法层面提出了 <strong>Stepwise-GRPO</strong>，将整个列表生成过程视作状态转移，并利用势能函数之差计算每个细分步的细粒度奖励。</p>
+</section>
+
+<section>
+    <h2>多元知识融合的患者建模与算法改进</h2>
+    <img src="frames/00_55_30.jpg" alt="多元知识融合的患者建模与算法改进">
+    <div class="caption">多元知识融合的患者建模与算法改进</div>
+    <p><span class="timestamp">[00:55:30]</span> Stepwise-GRPO 的核心在于<strong>奖励塑形（Reward Shaping）</strong>。对于生成的药物序列 M1, M2, M3，模型会根据从状态1转移到状态2的增量质量，即时修正优势函数（Advantage）。这确保了在一个长序列中，表现良好的Item Token能获得正向激励，而表现欠佳（例如产生不良反应）的部分能被精准削弱。</p>
+</section>
+
+<section>
+    <h2>基于状态转移的细粒度奖励信号建模</h2>
+    <img src="frames/00_58_00.jpg" alt="基于状态转移的细粒度奖励信号建模">
+    <div class="caption">基于状态转移 the 细粒度奖励信号建模</div>
+    <p><span class="timestamp">[00:58:00]</span> 实验数据表明，Stepwise-GRPO在准确性、安全性及通用性上均优于基准模型。特别是在面对具有药物相互作用风险的数据集时，该框架能更好地平衡准确率与安全性（Trade-off）。对比GRPO，新的细粒度对齐方法在奖励函数曲线上表现得更平滑且收敛更快。</p>
+</section>
+
+<section>
+    <h2>药物生成过程的状态划分与势能函数定义</h2>
+    <img src="frames/00_59_05.jpg" alt="药物生成过程的状态划分与势能函数定义">
+    <div class="caption">药物生成过程的状态划分与势能函数定义</div>
+    <p><span class="timestamp">[00:59:05]</span> 通过定义从有效性、安全性和合法性等维度构筑的势能函数，团队成功将List-wise任务拆解。范陈晓总结，本项工作证明了将推荐视作动态决策过程的巨大潜力，尤其是在严肃的医疗应用场景中。</p>
+</section>
+
+<section>
+    <h2>Think Before Recommendation: Reasoning-Based Rating Prediction</h2>
+    <img src="frames/01_01_55.jpg" alt="Think Before Recommendation: Reasoning-Based Rating Prediction">
+    <div class="caption">Think Before Recommendation: Reasoning-Based Rating Prediction</div>
+    <p><span class="timestamp">[01:02:18]</span> 最后一位核心讲者是中科大的博士生孔晓宇。他分享了 <strong>"Think before recommendation"</strong>。该项工作关注评分预测（Rating Prediction）这一金牌排序环节，主要利用LLM的建模能力增强预测准确度。</p>
+</section>
+
+<section>
+    <h2>研究背景：利用推理能力强化推荐任务</h2>
+    <img src="frames/01_03_15.jpg" alt="研究背景：利用推理能力强化推荐任务">
+    <div class="caption">研究背景：利用推理能力强化推荐任务</div>
+    <p><span class="timestamp">[01:03:35]</span> 以往将推理引入评分预测的方法通常基于“教师-学生”蒸馏框架。具体来说，教师模型生成三类分析：提取兴趣、总结Item特征、匹配度评估。然而，这些方法假设教师模型的推理轨迹始终是完美的。事实上，离线大模型的推理往往带有偏差，且静态蒸馏的模型缺乏针对后续任务的自我迭代能力。孔晓宇受DeepSeek-R1启发，提出利用自反思与RL将推荐目标真正引入推理过程。</p>
+</section>
+
+<section>
+    <h2>RECOZERO 框架：基于强化学习的推理优化</h2>
+    <img src="frames/01_10_05.jpg" alt="RECOZERO 框架：基于强化学习的推理优化">
+    <div class="caption">RECOZERO 框架：基于强化学习的推理优化</div>
+    <p><span class="timestamp">[01:10:05]</span> 研究提出 <strong>RECOZERO</strong> 框架。其核心在于摆脱教师模型依赖，让模型在同一条Reasoning Trace中强制执行四步：用户分析、Item提炼、匹配度计算、分数预测。这种结构化思考模式增强了结果的鲁棒性。为防止奖励黑客（Reward Hacking），团队采用了直接面向指标（MAE/MAME）的奖励设置。</p>
+</section>
+
+<section>
+    <h2>GRPO 强化学习应用与推理轨迹优化</h2>
+    <img src="frames/01_14_00.jpg" alt="GRPO 强化学习应用与推理轨迹优化">
+    <div class="caption">GRPO 强化学习应用与推理轨迹优化</div>
+    <p><span class="timestamp">[01:14:00]</span> 为解决RL冷启动问题，团队设计了<strong>Self-Refine（自我精炼）</strong>机制。当模型预测结果与Ground Truth偏差较大时，将其重新设计为“反思任务”，让模型分析为何出错。以此构建的“冷启动数据集”包含了高质量的正面轨迹与反思修正后的轨迹，为后续大规模RL训练奠定了良好基础。</p>
+</section>
+
+<section>
+    <h2>实验结果分析与冷启动性能评估</h2>
+    <img src="frames/01_18_25.jpg" alt="实验结果分析与冷启动性能评估">
+    <div class="caption">实验结果分析与冷启动性能评估</div>
+    <p><span class="timestamp">[01:18:25]</span> RECOZERO在传统与冷启动场景下均表现优异。消融实验显示，带反思的冷启动比纯RL在训练初期具有压倒性优势。此外，将四步任务整合进一个模型，比起分立式蒸馏具有更小的总推理开销。孔晓宇总结：真正的推荐推理应当以推荐指标为唯一指引。</p>
+</section>
+
+<section>
+    <h2>Panel Discussion: The Future and Challenges of Generative Recommendation</h2>
+    <img src="frames/01_21_10.jpg" alt="Panel Discussion: The Future and Challenges of Generative Recommendation">
+    <div class="caption">圆桌论坛环节</div>
+    <p><span class="timestamp">[01:21:38]</span> 圆桌会议由张扬博士主持，邀请四位讲者共同探讨生成式推荐的定义、路线之争、研究挑战与入门建议。</p>
+</section>
+
+<section>
+    <h2>圆桌论坛：生成式推荐的定义与范式区别</h2>
+    <img src="frames/01_22_55.jpg" alt="圆桌论坛：生成式推荐的定义与范式区别">
+    <div class="caption">圆桌论坛：生成式推荐的定义与范式区别</div>
+    <p><span class="timestamp">[01:22:55]</span> 讲者们对“什么是生成式推荐”有着不同的理解。Runyang偏向于狭义的基于Semantic ID（如TIGER）的范式；孔晓宇提出了更广义的观点，认为任何利用生成式模型架构捕获上下文交互的方式都可被纳入；林子杰强调其核心在于利用Next Token Prediction训练范式。陈晓则认为界限在于从传统的“匹配计算”向“条件序列生成”的转变。</p>
+</section>
+
+<section>
+    <h2>生成式推荐的定义与范式演变</h2>
+    <img src="frames/01_25_50.jpg" alt="生成式推荐的定义与范式演变">
+    <div class="caption">生成式推荐的定义与范式演变</div>
+    <p><span class="timestamp">[01:25:50]</span> 嘉宾们达成的一点共识是：推荐系统正从判别式阶段（堆算力学生成良好的Embedding）向生成式阶段转移。现在的核心任务是发明一种“推荐场景的语言”，让不同Item通过这种语义ID进行信息共享，并通过Scaling Law实现跨Item的信息对齐。</p>
+</section>
+
+<section>
+    <h2>广义生成式推荐：从文本表征到Agent结合</h2>
+    <img src="frames/01_27_40.jpg" alt="广义生成式推荐：从文本表征到Agent结合">
+    <div class="caption">广义生成式推荐：从文本表征到Agent结合</div>
+    <p><span class="timestamp">[01:27:40]</span> 讨论延伸到了业界落地形态（如美团“小美”等），未来的推荐系统不仅仅是冷冰冰的列表，更可能通过主动交互（Agent化）辅助用户完成精准的工作流。这种“推荐场景语言”的跨Item通信是传统SASRec模型难以通过单一序列模拟实现的。</p>
+</section>
+
+<section>
+    <h2>语义ID序列与NLP训练范式的迁移</h2>
+    <img src="frames/01_30_40.jpg" alt="语义ID序列与NLP训练范式的迁移">
+    <div class="caption">语义ID序列与NLP训练范式的迁移</div>
+    <p><span class="timestamp">[01:30:40]</span> 林子杰指出，NTP（Next Token Prediction）带来了一种极其强大的空间表示能力。为了在推荐中应用NTP，我们必须打破孤立的Token体系，构建出一套带语义的标识体系。只有这样，模型才能真正学习到推荐场域内的内在规律。</p>
+</section>
+
+<section>
+    <h2>生成式与传统推荐：从匹配到推理的转变</h2>
+    <p><span class="timestamp">[01:32:45]</span> 陈晓重申，生成式推荐不应过度依赖贡献统计（Co-occurrence Statistics），而应侧重于推理。这种从“匹配”到“推理”的角色转变，使得模型在处理长尾Item、冷启动问题时比传统方法具备天然优势。</p>
+</section>
+
+<section>
+    <h2>路线之争：LLM-based vs Semantic ID-based</h2>
+    <img src="frames/01_34_30.jpg" alt="路线之争：LLM-based vs Semantic ID-based">
+    <div class="caption">路线之争：LLM-based vs Semantic ID-based</div>
+    <p><span class="timestamp">[01:34:30]</span> 针对究竟是倾向于LLM-based（文本增强）还是Semantic ID-based（极致压缩/推理）路线，嘉宾们一致认为两者并非对立。LLM的核心优势在于“世界知识（World Knowledge）”，尤其在冷启动时由于其Pre-training积累的背景能提供强大的先验信息。但在处理数亿级超大规模Item池时，压缩后的Semantic ID在工程上线与效率方面更具可行性。</p>
+</section>
+
+<section>
+    <h2>动机：为什么必须用 LLM 做推荐？</h2>
+    <img src="frames/01_43_20.jpg" alt="动机分析">
+    <div class="caption">动机：为什么必须用 LLM 做推荐？</div>
+    <p><span class="timestamp">[01:43:20]</span> 讲者们建议从指标表现、可解释性两个方面去说服审稿人。尽管部署成本高，但LLM带来的通用性不仅仅是单一指标的刷榜，更核心的是引入了一种“极富弹性的策略控制接口”。通过LLM文本接口，我们能更方便地通过SFT或RL即时调整推荐策略，这是硬编码的特征工程无法比拟的。</p>
+</section>
+
+<section>
+    <h2>现状：生成式推荐研究的主要挑战</h2>
+    <img src="frames/01_53_00.jpg" alt="生成式推荐的应用需求与算力挑战">
+    <div class="caption">生成式推荐的应用需求与算力挑战</div>
+    <p><span class="timestamp">[01:53:00]</span> 现状面临的核心挑战依然是**算力**（难以满足实时部署需求）和**潜在的遗忘问题**（灾难性遗忘可能导致模型在海量更新中丧失世界知识）。此外，如何将传统的离散用户行为数据与连续的大规模预训练语义空间精准对齐（Gap Reduction），依然是一个开放式的课题。</p>
+</section>
+
+<section>
+    <h2>未来：LLM-based Rec 还有哪些值得关注的方向？</h2>
+    <img src="frames/01_55_50.jpg" alt="未来方向">
+    <div class="caption">未来方向</div>
+    <p><span class="timestamp">[01:55:50]</span> 展望未来，嘉宾们提出了三个核心方向：
+    <ul>
+        <li><strong>Personalized Agent</strong>：从单一推荐位转型为像Perplexity辅助导购那样的生活助手，深度结合跨平台的用户数据（Location、聊天偏好等）。</li>
+        <li><strong>多模态行为建模</strong>：将用户行为序列（ID Seq）视作独立于文本、图像外的“第四种模态”融入模型。</li>
+        <li><strong>跨领域交叉研究</strong>：借鉴HCI（人机交互）或心理学领域的分析框架，提升推荐结果的心理适配度。</li>
+    </ul></p>
+</section>
+
+<section>
+    <h2>圆桌话题 6: 如何入门生成式推荐?</h2>
+    <img src="frames/02_01_40.jpg" alt="如何入门生成式推荐?">
+    <div class="caption">如何入门生成式推荐?</div>
+    <p><span class="timestamp">[02:04:20]</span> 为初学者建议的路线如下：
+    <ol>
+        <li><strong>夯实基础</strong>：通读TIGER、LARA以及SASRec等奠基性文章，理解ID表征的历史演变。</li>
+        <li><strong>关注前沿</strong>：重点阅读2024-2025年关于对齐技术（Step-level RL）、Prompt工程以及Semantic ID编码的文章。</li>
+        <li><strong>实践出真知</strong>：利用现有的开源项目（如孔晓宇推荐的Mini-OneRec）进行实验。</li>
+    </ol>
+    </p>
+</section>
+
+<footer>
+    © 2025 AI TIME NeurIPS 专题研讨会 | 文本级深度内容呈现
+</footer>
+
+</body>
+</html> Assistant: <p>No detailed feedback was provided for this response.</p>
