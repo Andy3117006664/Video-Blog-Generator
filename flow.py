@@ -65,16 +65,22 @@ Your task is to transform this guided transcript into a high-quality, textbook-l
    - If a section contains a panel discussion or multiple speakers, summarize each of their key contributions in detail. 
    - The final sections (e.g., Round Table/Panel Discussion) must be just as detailed as the beginning sections.
 
-3. **MANDATORY IMAGE INCLUSION**:
+3. **SECTION LENGTH (MULTI-PARAGRAPH REQUIRED)**:
+   Every section must contain multiple paragraphs (use <p> tags), not a single block.
+   - Write at least 4 paragraphs per section.
+   - Each paragraph should be 5–6 sentences.
+   - Use plain paragraphs for expansion (avoid adding extra headings beyond the required H2/H3 for that section).
+
+4. **MANDATORY IMAGE INCLUSION**:
    If a section contains a "KEY IMAGE" (e.g., <img src="frames/hh_mm_ss.jpg">), you MUST insert that image at the beginning of that section in the final HTML. Add a descriptive caption based on the section title.
 
-4. **TIMESTAMPS**:
+5. **TIMESTAMPS**:
    Include the section timestamp at the beginning of the first paragraph of each section (e.g., **[01:30:50]**).
 
-5. **LANGUAGE**:
+6. **LANGUAGE**:
    Use the SAME LANGUAGE as the provided reference transcript (if it's Chinese, write in Chinese).
 
-6. **HTML OUTPUT**:
+7. **HTML OUTPUT**:
    Output valid HTML with clean CSS styling as described in <desired_visual_style>.
 
 Assistant: <!DOCTYPE html>

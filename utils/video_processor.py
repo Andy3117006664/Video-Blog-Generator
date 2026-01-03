@@ -250,9 +250,41 @@ def get_video_info(url):
             return h * 3600 + m * 60 + s
         except: return 0
 
+    def load_frames_from_folder(frames_dir: str):
+        if not os.path.isdir(frames_dir):
+            return []
+        pat = re.compile(r"^\d{2}_\d{2}_\d{2}\.jpg$")
+        names = [n for n in os.listdir(frames_dir) if pat.match(n)]
+        names.sort()
+        return [{"timestamp": n[:-4].replace("_", ":"), "path": f"{frames_dir}/{n}"} for n in names]
+
     video_id = get_video_id(url)
     if not video_id:
         return {"error": "Unsupported or invalid video URL"}
+
+    cached_frames = load_frames_from_folder("frames")
+    if cached_frames and os.path.exists("transcript.txt"):
+        try:
+            with open("transcript.txt", "r", encoding="utf-8") as f:
+                transcript_with_name = f.read()
+        except Exception as e:
+            logger.warning(f"Failed to read transcript.txt cache: {e}")
+            transcript_with_name = ""
+
+        title = "Video"
+        if transcript_with_name:
+            first_line = transcript_with_name.splitlines()[0].strip()
+            if first_line.lower().startswith("video title:"):
+                title = first_line.split(":", 1)[1].strip() or title
+
+        return {
+            "title": title,
+            "transcript_with_name": transcript_with_name,
+            "frames": cached_frames,
+            "url": url,
+            "outline": [],
+            "enhanced_segments": []
+        }
 
     ydl_opts = {
         'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
@@ -282,27 +314,35 @@ def get_video_info(url):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         else:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                video_path = ydl.prepare_filename(info)
-                if not os.path.exists(video_path):
-                    base, _ = os.path.splitext(video_path)
-                    if os.path.exists(base + ".mp4"):
-                        video_path = base + ".mp4"
+            if cached_frames:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            else:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    video_path = ydl.prepare_filename(info)
+                    if not os.path.exists(video_path):
+                        base, _ = os.path.splitext(video_path)
+                        if os.path.exists(base + ".mp4"):
+                            video_path = base + ".mp4"
         
         # Now try to get subtitles separately
+        base_prefix = None
         if video_path:
-            base_path = os.path.splitext(video_path)[0]
-            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
-            if not potential_subs:
-                logger.info("Fetching subtitles...")
-                sub_opts = ydl_opts.copy()
-                sub_opts.update({'skip_download': True, 'writesubtitles': True, 'writeautomaticsub': True})
-                try:
-                    with yt_dlp.YoutubeDL(sub_opts) as ydl:
-                        ydl.download([url])
-                except Exception as sub_e:
-                    logger.warning(f"Subtitles download failed (likely 429): {sub_e}")
+            base_prefix = os.path.basename(os.path.splitext(video_path)[0])
+        else:
+            base_prefix = "temp_video"
+
+        potential_subs = [f for f in os.listdir('.') if f.startswith(base_prefix) and f.endswith(('.srt', '.vtt'))]
+        if not potential_subs:
+            logger.info("Fetching subtitles...")
+            sub_opts = ydl_opts.copy()
+            sub_opts.update({'skip_download': True, 'writesubtitles': True, 'writeautomaticsub': True})
+            try:
+                with yt_dlp.YoutubeDL(sub_opts) as ydl:
+                    ydl.download([url])
+            except Exception as sub_e:
+                logger.warning(f"Subtitles download failed (likely 429): {sub_e}")
     except Exception as e:
         logger.warning(f"yt-dlp download/info extraction failed: {e}. Trying to proceed with whatever is available...")
     
@@ -313,11 +353,12 @@ def get_video_info(url):
         # 1. Transcript extraction
         transcript_text = ""
         srt_path = ""
+        base_prefix = None
         if video_path:
-            base_path = os.path.splitext(video_path)[0]
-            potential_subs = [f for f in os.listdir('.') if f.startswith(os.path.basename(base_path)) and f.endswith(('.srt', '.vtt'))]
+            base_prefix = os.path.basename(os.path.splitext(video_path)[0])
         else:
-            potential_subs = []
+            base_prefix = "temp_video"
+        potential_subs = [f for f in os.listdir('.') if f.startswith(base_prefix) and f.endswith(('.srt', '.vtt'))]
         
         if potential_subs:
             chosen_sub = None
@@ -418,7 +459,7 @@ def get_video_info(url):
 
         # 2.1 Multimodal enhancement: Supplement with visual topic shifts (PPT changes)
         # If the visual change occurs far from any existing outline item, we title it and add it.
-        frames = extract_frames(video_path, "frames") if video_path else []
+        frames = cached_frames if cached_frames else (extract_frames(video_path, "frames") if video_path else [])
         if frames and outline:
             logger.info("Merging visual topic shifts into the outline...")
             
