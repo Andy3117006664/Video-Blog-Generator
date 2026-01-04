@@ -9,7 +9,6 @@ def call_llm(prompt: str) -> str:
     """Call LLM using OpenRouter API"""
     api_key = "your_openrouter_api_key"
     model = "google/gemini-3-flash-preview"
-    max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", "8000"))
     temperature = float(os.getenv("OPENROUTER_TEMPERATURE", "0.4"))
     
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -25,7 +24,6 @@ def call_llm(prompt: str) -> str:
         "messages": [
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": max_tokens,
         "temperature": temperature,
         "reasoning": {"enabled": True}
     }
