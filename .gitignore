@@ -57,6 +57,8 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+*.html
+*.vtt
 *.cache/
 
 # Compiled files
